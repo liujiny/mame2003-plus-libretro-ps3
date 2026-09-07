@@ -21,6 +21,9 @@
 #include "driver.h"
 #include "state.h"
 #include "log.h"
+#ifdef __PS3__
+#include "cpu/sh2/sh2.h"
+#endif
 #include "input.h"
 #include "inptport.h"
 #include "fileio.h"
@@ -316,6 +319,10 @@ bool retro_load_game(const struct retro_game_info *game)
 
   init_core_options();
   update_variables(true);
+#ifdef __PS3__
+  /* Skip the non-interactive eight-second startup disclaimer on PS3. */
+  options.skip_disclaimer = true;
+#endif
 
   configure_cyclone_mode(driverIndex);
 
@@ -428,6 +435,8 @@ void retro_unload_game(void)
 
 void retro_deinit(void)
 {
+   osd_stop_audio_stream();
+   osd_close_display();
 #ifdef LOG_PERFORMANCE
    perf_cb.perf_log();
 #endif
@@ -552,6 +561,7 @@ bool retro_unserialize(const void * data, size_t size)
 
 int osd_start_audio_stream(int stereo)
 {
+  osd_stop_audio_stream();
 
   Machine->sample_rate = options.samplerate;
 
@@ -566,6 +576,12 @@ int osd_start_audio_stream(int stereo)
 
   samples_buffer = (short *) calloc(samples_per_frame+16, 2 + usestereo * 2);
   if (!usestereo) conversion_buffer = (short *) calloc(samples_per_frame+16, 4);
+  if (!samples_buffer || (!usestereo && !conversion_buffer))
+  {
+    osd_stop_audio_stream();
+    Machine->sample_rate = 0;
+    return 0;
+  }
 
   return samples_per_frame;
 }
@@ -638,6 +654,13 @@ void osd_update_silent_stream(void)
 
 void osd_stop_audio_stream(void)
 {
+   free(samples_buffer);
+   samples_buffer = NULL;
+   free(conversion_buffer);
+   conversion_buffer = NULL;
+   samples_per_frame = 0;
+   orig_samples_per_frame = 0;
+   delta_samples = 0.0f;
 }
 
 

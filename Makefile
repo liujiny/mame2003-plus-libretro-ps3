@@ -448,7 +448,9 @@ else ifneq (,$(filter $(platform), ps3 psl1ght))
 	BIGENDIAN = 1
 	CC = $(PS3DEV)/ppu/bin/ppu-$(COMMONLV)gcc$(EXE_EXT)
 	AR = $(PS3DEV)/ppu/bin/ppu-$(COMMONLV)ar$(EXE_EXT)
-	PLATCFLAGS += -D__PS3__ -D__ppc__ -D__POWERPC__
+	# Keep the core's many global data references from exhausting the single
+	# 64 KiB PPU TOC when this archive is linked into RetroArch.
+	PLATCFLAGS += -D__PS3__ -D__ppc__ -D__POWERPC__ -mminimal-toc
 	ifeq ($(platform), psl1ght)
 		PLATFORM_DEFINES += -D__PSL1GHT__
 	endif
@@ -823,7 +825,10 @@ CFLAGS += -D_LARGEFILE_SOURCE
 CFLAGS += -D_FILE_OFFSET_BITS=64
 
 # make gcc fail like msvc does
-ifeq (,$(findstring msvc,$(platform)))
+# The official PS3 SDK ships GCC 4.1.1, which does not recognise the
+# warning-specific -Werror= form. Keep the checks for modern toolchains,
+# but allow this PS3 build to use the installed Cell SDK compiler.
+ifeq (,$(filter $(platform),msvc ps3))
 	CFLAGS += -Werror=vla -Werror=declaration-after-statement
 endif
 

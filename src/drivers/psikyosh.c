@@ -156,11 +156,28 @@ static struct GfxLayout layout_16x16x8 =
 	16,16,
 	RGN_FRAC(1,1),
 	8,
+#ifdef __PS3__
+	{GFX_RAW},
+	{0},
+	{16*8},
+#else
 	{STEP8(0,1)},
 	{STEP16(0,8)},
 	{STEP16(0,16*8)},
+#endif
 	16*16*8
 };
+
+#ifdef __PS3__
+int ps3_psikyosh_compact_gfx(void)
+{
+	/* MachineDriver is copied while starting a game; matching the live
+	 * driver name is stable across that copy and covers the Psikyo 5 set. */
+	return Machine && Machine->gamedrv && Machine->gamedrv->name &&
+		(!strcmp(Machine->gamedrv->name, (const char[]){'g','u','n','b','i','r','d','2',0}) ||
+		 !strcmp(Machine->gamedrv->name, (const char[]){'g','u','n','b','i','r','d','2','a',0}));
+}
+#endif
 
 static struct GfxDecodeInfo gfxdecodeinfo[] =
 {
@@ -285,13 +302,15 @@ static WRITE32_HANDLER( psikyosh_vidregs_w )
 {
 	COMBINE_DATA(&psikyosh_vidregs[offset]);
 
-#if ROMTEST
+#if ROMTEST || defined(__PS3__)
 	if(offset==4) /* Configure bank for gfx test */
 	{
 		if (!(mem_mask & 0x000000ff) || !(mem_mask & 0x0000ff00))	/* Bank*/
 		{
 			unsigned char *ROM = memory_region(REGION_GFX1);
-			cpu_setbank(2,&ROM[0x20000 * (psikyosh_vidregs[offset]&0xfff)]); /* Bank comes from vidregs */
+			size_t banks = memory_region_length(REGION_GFX1) / 0x20000;
+			unsigned bank = psikyosh_vidregs[offset] & 0xfff;
+			if (banks) cpu_setbank(2, &ROM[0x20000 * (bank % banks)]); /* Bank comes from vidregs */
 		}
 	}
 #endif
@@ -372,6 +391,8 @@ static MEMORY_READ32_START( ps3v1_readmem )
 
 #if ROMTEST
 	{ 0x05000004, 0x05000007, psh_sample_r }, /* data for rom tests (Used to verify Sample rom)*/
+#endif
+#if ROMTEST || defined(__PS3__)
 	{ 0x03060000, 0x0307ffff, MRA32_BANK2 }, /* data for rom tests (gfx), data is controlled by vidreg*/
 	{ 0x04060000, 0x0407ffff, MRA32_BANK2 }, /* data for rom tests (gfx) (Mirrored?)*/
 #endif
@@ -408,6 +429,8 @@ static MEMORY_READ32_START( ps5_readmem )
 
 #if ROMTEST
 	{ 0x03100004, 0x03100007, psh_sample_r }, /* data for rom tests (Used to verify Sample rom)*/
+#endif
+#if ROMTEST || defined(__PS3__)
 	{ 0x04060000, 0x0407ffff, MRA32_BANK2 }, /* data for rom tests (gfx), data is controlled by vidreg*/
 #endif
 MEMORY_END
@@ -634,7 +657,7 @@ INPUT_PORTS_START( gnbarich ) /* Same as S1945iii except only one button */
 	PORT_DIPSETTING(    0x01, "International Ver B." )
 INPUT_PORTS_END
 
-#if ROMTEST
+#if ROMTEST || defined(__PS3__)
 #define ROMTEST_GFX 0
 #else
 #define ROMTEST_GFX ROMREGION_DISPOSE

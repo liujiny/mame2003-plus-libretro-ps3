@@ -241,7 +241,14 @@ struct GfxElement *decodegfx(const UINT8 *src,const struct GfxLayout *gl)
 	}
 	else
 	{
+#ifdef __PS3__
+		/* PS3: keep 4bpp decoded graphics in packed-nibble form.  This
+		 * is deliberately unconditional: the driver name is not reliable
+		 * while the graphics table is being decoded. */
+		if (gl->planes <= 4 && !(gfx->width & 1))
+#else
 		if (0 && gl->planes <= 4 && !(gfx->width & 1))
+#endif
 /*		if (gl->planes <= 4 && !(gfx->width & 1))*/
 		{
 			gfx->flags |= GFX_PACKED;

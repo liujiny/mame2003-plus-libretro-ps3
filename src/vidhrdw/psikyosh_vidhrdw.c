@@ -92,6 +92,9 @@ sol divide doesn't seem to make much use of tilemaps at all, it uses them to fad
 #include "driver.h"
 #include "vidhrdw/generic.h"
 #include "psikyosh.h"
+#ifdef __PS3__
+#include "mame2003/log.h"
+#endif
 
 /* Needed for psikyosh_drawgfxzoom */
 struct mame_bitmap *zoom_bitmap, *z_bitmap;
@@ -368,6 +371,22 @@ static void psikyosh_drawbackground( struct mame_bitmap *bitmap, const struct re
 /* sx and sy is top-left of entire sprite regardless of flip */
 /* Note that Level 5-4 of sbomberb boss is perfect! (Alpha blended zoomed) as well as S1945II logo */
 /* pixel is only plotted if z is >= priority_buffer->line[y][x] */
+static UINT8 *ps3_psikyosh_source(const struct GfxElement *gfx, int row, UINT8 *scratch)
+{
+	if (gfx->flags & GFX_PACKED)
+	{
+		int i;
+		const UINT8 *packed = gfx->gfxdata + (row / 16) * gfx->char_modulo;
+		for (i = 0; i < 128; i++)
+		{
+			scratch[i*2] = packed[i] & 15;
+			scratch[i*2+1] = packed[i] >> 4;
+		}
+		return scratch + (row & 15) * 16;
+	}
+	return gfx->gfxdata + row * gfx->line_modulo;
+}
+
 void psikyosh_drawgfxzoom( struct mame_bitmap *dest_bmp,const struct GfxElement *gfx,
 		unsigned int code,unsigned int color,int flipx,int flipy,int offsx,int offsy,
 		const struct rectangle *clip,int transparency,int transparent_color,
@@ -376,6 +395,14 @@ void psikyosh_drawgfxzoom( struct mame_bitmap *dest_bmp,const struct GfxElement 
 	struct rectangle myclip; /* Clip to screen boundaries */
 	int code_offset = 0;
 	int xtile, ytile, xpixel, ypixel;
+	UINT8 packed_tile[256];
+	struct GfxElement unpacked_view;
+	if (gfx && (gfx->flags & GFX_PACKED))
+	{
+		unpacked_view = *gfx;
+		unpacked_view.line_modulo = 16;
+		gfx = &unpacked_view;
+	}
 
 	if (!zoomx || !zoomy) return;
 
@@ -489,7 +516,7 @@ void psikyosh_drawgfxzoom( struct mame_bitmap *dest_bmp,const struct GfxElement 
 						{
 							if( z > 0 )
 							{
-								UINT8 *source = gfx->gfxdata + (source_base + y_index)*gfx->line_modulo + x_index_base;
+								UINT8 *source = ps3_psikyosh_source(gfx, source_base + y_index, packed_tile) + x_index_base;
 								UINT32 *dest = (UINT32 *)dest_bmp->base + sy*dest_bmp->rowpixels + sx;
 								UINT16 *pri = (UINT16 *)z_bitmap->base + sy*z_bitmap->rowpixels + sx;
 								int src_modulo = yinc*gfx->line_modulo - xinc*(ex-sx);
@@ -520,7 +547,7 @@ void psikyosh_drawgfxzoom( struct mame_bitmap *dest_bmp,const struct GfxElement 
 							}
 							else
 							{
-								UINT8 *source = gfx->gfxdata + (source_base + y_index)*gfx->line_modulo + x_index_base;
+								UINT8 *source = ps3_psikyosh_source(gfx, source_base + y_index, packed_tile) + x_index_base;
 								UINT32 *dest = (UINT32 *)dest_bmp->base + sy*dest_bmp->rowpixels + sx;
 								int src_modulo = yinc*gfx->line_modulo - xinc*(ex-sx);
 								int dst_modulo = dest_bmp->rowpixels - (ex-sx);
@@ -547,7 +574,7 @@ void psikyosh_drawgfxzoom( struct mame_bitmap *dest_bmp,const struct GfxElement 
 						{
 							if ( z > 0 )
 							{
-								UINT8 *source = gfx->gfxdata + (source_base + y_index)*gfx->line_modulo + x_index_base;
+								UINT8 *source = ps3_psikyosh_source(gfx, source_base + y_index, packed_tile) + x_index_base;
 								UINT32 *dest = (UINT32 *)dest_bmp->base + sy*dest_bmp->rowpixels + sx;
 								UINT16 *pri = (UINT16 *)z_bitmap->base + sy*z_bitmap->rowpixels + sx;
 								int src_modulo = yinc*gfx->line_modulo - xinc*(ex-sx);
@@ -578,7 +605,7 @@ void psikyosh_drawgfxzoom( struct mame_bitmap *dest_bmp,const struct GfxElement 
 							}
 							else
 							{
-								UINT8 *source = gfx->gfxdata + (source_base + y_index)*gfx->line_modulo + x_index_base;
+								UINT8 *source = ps3_psikyosh_source(gfx, source_base + y_index, packed_tile) + x_index_base;
 								UINT32 *dest = (UINT32 *)dest_bmp->base + sy*dest_bmp->rowpixels + sx;
 								int src_modulo = yinc*gfx->line_modulo - xinc*(ex-sx);
 								int dst_modulo = dest_bmp->rowpixels - (ex-sx);
@@ -606,7 +633,7 @@ void psikyosh_drawgfxzoom( struct mame_bitmap *dest_bmp,const struct GfxElement 
 						{
 							if ( z > 0 )
 							{
-								UINT8 *source = gfx->gfxdata + (source_base + y_index)*gfx->line_modulo + x_index_base;
+								UINT8 *source = ps3_psikyosh_source(gfx, source_base + y_index, packed_tile) + x_index_base;
 								UINT32 *dest = (UINT32 *)dest_bmp->base + sy*dest_bmp->rowpixels + sx;
 								UINT16 *pri = (UINT16 *)z_bitmap->base + sy*z_bitmap->rowpixels + sx;
 								int src_modulo = yinc*gfx->line_modulo - xinc*(ex-sx);
@@ -641,7 +668,7 @@ void psikyosh_drawgfxzoom( struct mame_bitmap *dest_bmp,const struct GfxElement 
 							}
 							else
 							{
-								UINT8 *source = gfx->gfxdata + (source_base + y_index)*gfx->line_modulo + x_index_base;
+								UINT8 *source = ps3_psikyosh_source(gfx, source_base + y_index, packed_tile) + x_index_base;
 								UINT32 *dest = (UINT32 *)dest_bmp->base + sy*dest_bmp->rowpixels + sx;
 								int src_modulo = yinc*gfx->line_modulo - xinc*(ex-sx);
 								int dst_modulo = dest_bmp->rowpixels - (ex-sx);
@@ -682,9 +709,10 @@ void psikyosh_drawgfxzoom( struct mame_bitmap *dest_bmp,const struct GfxElement 
 			for(xtile=0; xtile<wide; xtile++)
 			{
 				int source_base = ((code + code_offset++) % gfx->total_elements) * gfx->height;
+				UINT8 *tile_source = ps3_psikyosh_source(gfx, source_base, packed_tile);
 				for( ypixel=0; ypixel<gfx->height; ypixel++ )
 				{
-					UINT8 *source = gfx->gfxdata + (source_base+ypixel) * gfx->line_modulo;
+					UINT8 *source = tile_source + ypixel * gfx->line_modulo;
 					UINT8 *dest = (UINT8 *)zoom_bitmap->line[ypixel + ytile*gfx->height];
 
 					for( xpixel=0; xpixel<gfx->width; xpixel++ )
@@ -1136,19 +1164,16 @@ static void psikyosh_postlineblend( struct mame_bitmap *bitmap, const struct rec
 
 VIDEO_UPDATE( psikyosh ) /* Note the z-buffer on each sprite to get correct priority */
 {
-		int i;
-		fillbitmap(bitmap,get_black_pen(),cliprect);
+	int i;
+	fillbitmap(bitmap,get_black_pen(),cliprect);
 	fillbitmap(z_bitmap,0,cliprect); /* z-buffer */
-
-		psikyosh_prelineblend(bitmap, cliprect);
-
-		for (i=0; i<=7; i++) {
-		psikyosh_drawsprites(bitmap, cliprect, i); /* When same priority bg's have higher pri*/
+	psikyosh_prelineblend(bitmap, cliprect);
+	for (i=0; i<=7; i++) {
+		psikyosh_drawsprites(bitmap, cliprect, i);
 		psikyosh_drawbackground(bitmap, cliprect, i);
-			if((psikyosh_vidregs[2]&0xf) == i) psikyosh_postlineblend(bitmap, cliprect);
-		}
+		if((psikyosh_vidregs[2]&0xf) == i) psikyosh_postlineblend(bitmap, cliprect);
+	}
 }
-
 VIDEO_EOF( psikyosh )
 {
 	buffer_spriteram32_w(0,0,0);

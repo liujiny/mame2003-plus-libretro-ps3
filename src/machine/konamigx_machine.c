@@ -246,6 +246,30 @@ void K053936GP_set_cliprect(int chip, int minx, int maxx, int miny, int maxy)
 	edx += eax;          \
 	dst_ptr[ecx] = edx; }
 
+#ifdef __PS3__
+extern int video_start_gaiapols(void);
+extern int ps3_gaiapolis_roz_colorbase(void);
+
+static INLINE UINT16 ps3_gaiapolis_roz_pixel_fast(int x, int y,
+		const struct GfxElement *gfx, const UINT8 *rom, int colorbase)
+{
+	int tile = (y >> 4) * 512 + (x >> 4);
+	int code = (rom[0x60000 + tile] | ((rom[0x20000 + tile] & 63) << 8)) % gfx->total_elements;
+	int color = (rom[tile >> 1] >> ((tile & 1) ? 0 : 4)) & 15;
+	int pen;
+	color |= (rom[0x20000 + tile] & 128) ? 16 : 0;
+	color |= colorbase << 4;
+	if (gfx->flags & GFX_PACKED)
+	{
+		UINT8 packed = gfx->gfxdata[code * gfx->char_modulo + (y & 15) * gfx->line_modulo + ((x & 15) >> 1)];
+		pen = (packed >> ((x & 1) ? 4 : 0)) & 0x0f;
+	}
+	else
+		pen = gfx->gfxdata[code * gfx->char_modulo + (y & 15) * gfx->line_modulo + (x & 15)];
+	return (UINT16)((gfx->colortable - Machine->remapped_colortable) + color * gfx->color_granularity + pen);
+}
+#endif
+
 static INLINE void K053936GP_copyroz32clip( struct mame_bitmap *dst_bitmap, struct mame_bitmap *src_bitmap,
 		const struct rectangle *dst_cliprect, const struct rectangle *src_cliprect,
 		UINT32 _startx,UINT32 _starty,int _incxx,int _incxy,int _incyx,int _incyy,
@@ -265,6 +289,14 @@ static INLINE void K053936GP_copyroz32clip( struct mame_bitmap *dst_bitmap, stru
 	int tx, dst_pitch;
 	UINT32 *dst_base;
 	int starty, incyy, startx, incyx, ty, sx, sy;
+#ifdef __PS3__
+	int ps3_gaiapols = (Machine->drv->video_start == video_start_gaiapols) ||
+		(Machine->gamedrv && Machine->gamedrv->name &&
+		 !strcmp(Machine->gamedrv->name, (const char[]){'g','a','i','a','p','o','l','s',0}));
+	const struct GfxElement *ps3_gfx = ps3_gaiapols ? Machine->gfx[0] : NULL;
+	const UINT8 *ps3_rom = ps3_gaiapols ? memory_region(REGION_GFX4) : NULL;
+	int ps3_colorbase = ps3_gaiapols ? ps3_gaiapolis_roz_colorbase() : 0;
+#endif
 
 	incxy = _incxy; incxx = _incxx; incyy = _incyy; incyx = _incyx;
 	starty = _starty; startx = _startx;
@@ -300,6 +332,9 @@ static INLINE void K053936GP_copyroz32clip( struct mame_bitmap *dst_bitmap, stru
 	cmask = colormask[tilebpp];
 
 	src_pitch = src_bitmap->rowpixels;
+#ifdef __PS3__
+	if (ps3_gaiapols) src_pitch = 8224;
+#endif
 	src_base = src_bitmap->base;
 
 	src_miny *= src_pitch;
@@ -355,11 +390,23 @@ static INLINE void K053936GP_copyroz32clip( struct mame_bitmap *dst_bitmap, stru
 			eax = cy;      ebx = cx;
 			eax >>= 16;    ebx >>= 16;
 			eax &= 0x1fff; ebx &= 0x1fff;
+
+#ifdef __PS3__
+			if (ps3_gaiapols)
+			{
+				int ps3_y = eax;
+				eax = ps3_y * 8224;
+				cy += incxy;   cx += incxx;
+				if (ebx < src_minx || ebx > src_maxx || eax < src_miny || eax > src_maxy) continue;
+				eax = ps3_gaiapolis_roz_pixel_fast(ebx, ps3_y, ps3_gfx, ps3_rom, ps3_colorbase);
+				goto ps3_roz_solid_ready;
+			}
+#endif
 			eax = (eax<<5) + (eax<<13); /*eax *= src_pitch;*/
 			cy += incxy;   cx += incxx;
 			if (ebx < src_minx || ebx > src_maxx || eax < src_miny || eax > src_maxy) continue;
-
 			eax = src_base[eax+ebx];
+			ps3_roz_solid_ready:
 			if (!(eax & cmask)) continue;
 
 			dst_ptr[ecx] = pal_base[eax];
@@ -380,11 +427,23 @@ static INLINE void K053936GP_copyroz32clip( struct mame_bitmap *dst_bitmap, stru
 			eax = cy;      ebx = cx;
 			eax >>= 16;    ebx >>= 16;
 			eax &= 0x1fff; ebx &= 0x1fff;
+
+#ifdef __PS3__
+			if (ps3_gaiapols)
+			{
+				int ps3_y = eax;
+				eax = ps3_y * 8224;
+				cy += incxy;   cx += incxx;
+				if (ebx < src_minx || ebx > src_maxx || eax < src_miny || eax > src_maxy) continue;
+				eax = ps3_gaiapolis_roz_pixel_fast(ebx, ps3_y, ps3_gfx, ps3_rom, ps3_colorbase);
+				goto ps3_roz_alpha_ready;
+			}
+#endif
 			eax = (eax<<5) + (eax<<13); /*eax *= src_pitch;*/
 			cy += incxy;   cx += incxx;
 			if (ebx < src_minx || ebx > src_maxx || eax < src_miny || eax > src_maxy) continue;
-
 			eax = src_base[eax+ebx];
+			ps3_roz_alpha_ready:
 			if (!(eax & cmask)) continue;
 
 			BLEND32_MACRO
@@ -524,6 +583,9 @@ static INLINE void zdrawgfxzoom32GP( struct mame_bitmap *bitmap, const struct Gf
 	/* outter loop*/
 	int src_fby, src_fdy, src_fbx;
 	UINT8 *src_base;
+#ifdef __PS3__
+	UINT8 ps3_unpacked_tile[16 * 16];
+#endif
 	int dst_w, dst_h;
 
 	/* one-time*/
@@ -566,6 +628,19 @@ static INLINE void zdrawgfxzoom32GP( struct mame_bitmap *bitmap, const struct Gf
 	src_fw    = 16;
 	src_fh    = 16;
 	src_base  = gfx->gfxdata + (code % gfx->total_elements) * gfx->char_modulo;
+#ifdef __PS3__
+	if (gfx->flags & GFX_PACKED)
+	{
+		int i;
+		for (i = 0; i < 16 * 8; i++)
+		{
+			UINT8 packed = src_base[i];
+			ps3_unpacked_tile[i * 2]     = packed & 0x0f;
+			ps3_unpacked_tile[i * 2 + 1] = packed >> 4;
+		}
+		src_base = ps3_unpacked_tile;
+	}
+#endif
 
 	pal_base  = gfx->colortable + (color % gfx->total_colors) * granularity;
 	shd_base  = (UINT32 *)palette_shadow_table;

@@ -112,6 +112,33 @@ static void get_gai_936_tile_info(int tile_index)
 	SET_TILE_INFO(0, tileno, colour, 0)
 }
 
+#ifdef __PS3__
+UINT16 ps3_gaiapolis_roz_pixel(int x, int y)
+{
+	const struct GfxElement *gfx = Machine->gfx[0];
+	const UINT8 *rom = memory_region(REGION_GFX4);
+	int tile = (y >> 4) * 512 + (x >> 4);
+	int code = (rom[0x60000+tile] | ((rom[0x20000+tile] & 63) << 8)) % gfx->total_elements;
+	int color = (rom[tile >> 1] >> ((tile & 1) ? 0 : 4)) & 15;
+	int pen;
+	color |= (rom[0x20000+tile] & 128) ? 16 : 0;
+	color |= sub1_colorbase << 4;
+	if (gfx->flags & GFX_PACKED)
+	{
+		UINT8 packed = gfx->gfxdata[code * gfx->char_modulo + (y & 15) * gfx->line_modulo + ((x & 15) >> 1)];
+		pen = (packed >> ((x & 1) ? 4 : 0)) & 0x0f;
+	}
+	else
+		pen = gfx->gfxdata[code * gfx->char_modulo + (y & 15) * gfx->line_modulo + (x & 15)];
+	return (UINT16)((gfx->colortable - Machine->remapped_colortable) + color * gfx->color_granularity + pen);
+}
+
+int ps3_gaiapolis_roz_colorbase(void)
+{
+	return sub1_colorbase;
+}
+#endif
+
 VIDEO_START(gaiapols)
 {
 	K055555_vh_start();
@@ -139,7 +166,13 @@ VIDEO_START(gaiapols)
 	K053936_wraparound_enable(0, 1);
 	K053936GP_set_offset(0, -10,  0); /* floor tiles in demo loop2 (Elaine vs. boss)*/
 
+#ifdef __PS3__
+	/* The mixer samples the ROM-backed map directly on PS3. */
+	ult_936_tilemap = tilemap_create(get_gai_936_tile_info, tilemap_scan_rows, TILEMAP_TRANSPARENT, 16, 16, 1, 1);
+#else
 	ult_936_tilemap = tilemap_create(get_gai_936_tile_info, tilemap_scan_rows, TILEMAP_TRANSPARENT, 16, 16, 512, 512);
+#endif
+	if (!ult_936_tilemap) return 1;
 	tilemap_set_transparent_pen(ult_936_tilemap, 0);
 
 	return 0;
